@@ -59,7 +59,8 @@ export async function deploy({ slug, sourcePath, withDatabase = true, onLog = ()
     await reload();
 
     finishDeploy(deployId, 'live');
-    const url = `https://${slug}.${ROOT_DOMAIN}`;
+    const scheme = ROOT_DOMAIN.endsWith('.localhost') ? 'http' : 'https';
+    const url = `${scheme}://${slug}.${ROOT_DOMAIN}`;
     log(`live at ${url}`);
     return { app, url };
   } catch (err) {

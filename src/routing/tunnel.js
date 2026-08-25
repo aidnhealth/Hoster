@@ -57,4 +57,10 @@ export function closeTunnel(slug) {
   updateApp(slug, { public: 0, tunnel_url: null });
 }
 
-export const localUrl = (slug) => `https://${slug}.${ROOT_DOMAIN}`;
+// Caddy serves both schemes. Link to plain HTTP on .localhost, because its
+// certificate comes from an internal CA the browser has no reason to trust yet
+// and a warning interstitial is a worse first impression than no TLS locally.
+export const localUrl = (slug) => {
+  const scheme = ROOT_DOMAIN.endsWith('.localhost') ? 'http' : 'https';
+  return `${scheme}://${slug}.${ROOT_DOMAIN}`;
+};

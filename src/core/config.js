@@ -16,8 +16,13 @@ export const CONTROL_PORT = Number(process.env.HOSTER_PORT ?? 7010);
 export const APP_PORT_MIN = 7100;
 export const APP_PORT_MAX = 7999;
 
-// Every app is reachable at <slug>.<ROOT_DOMAIN> on the LAN.
-export const ROOT_DOMAIN = process.env.HOSTER_DOMAIN ?? 'hoster.local';
+// Every app is reachable at <slug>.<ROOT_DOMAIN>.
+//
+// The default ends in .localhost, which every browser resolves to 127.0.0.1 on
+// its own — so apps are reachable the moment they deploy, with no DNS setup and
+// no sudo. Reaching them from OTHER devices on the network needs a real domain
+// that those devices can resolve: run setup.sh and set HOSTER_DOMAIN=hoster.local.
+export const ROOT_DOMAIN = process.env.HOSTER_DOMAIN ?? 'hoster.localhost';
 
 export const POSTGRES = {
   container: 'hoster-postgres',

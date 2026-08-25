@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# One-time host setup for Hoster: wildcard LAN DNS + start-on-login.
+# OPTIONAL host setup for Hoster: wildcard LAN DNS + start-on-login.
+#
+# Hoster works without this. By default apps live on *.hoster.localhost, which
+# browsers resolve on their own. Run this only when you want other devices on
+# your network to reach your apps, or want Hoster to start when you log in.
+#
 # Run with: sudo ./setup.sh
 set -euo pipefail
 
@@ -71,6 +76,8 @@ LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/nul
 cat <<DONE
 
 Setup complete.
+
+  Run Hoster with  HOSTER_DOMAIN=$DOMAIN npm start
 
   Dashboard        http://$DOMAIN
   This machine     https://<app>.$DOMAIN

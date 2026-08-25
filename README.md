@@ -11,7 +11,7 @@ No API keys. No accounts. No cloud bill.
 
 ```bash
 hoster deploy ./my-app
-#   https://my-app.hoster.local
+#   http://my-app.hoster.localhost      <- works immediately, no setup
 
 hoster share my-app
 #   https://indirect-trying-randy.trycloudflare.com   <- send this to anyone
@@ -57,13 +57,23 @@ back after a reboot, and nothing leaves your machine unless you ask it to.
 git clone https://github.com/<you>/hoster.git
 cd hoster
 npm install
+npm start
+```
+
+Open **http://localhost:7010** and deploy something. Apps land on
+`http://<name>.hoster.localhost`, which every browser resolves to your machine
+on its own — no DNS configuration, no `sudo`, nothing to edit.
+
+### Optional: LAN access and start-on-login
+
+```bash
 sudo ./setup.sh
 ```
 
-`setup.sh` points `*.hoster.local` at your machine via dnsmasq and installs a
-launchd agent so everything starts on login. It needs `sudo` for `/etc/resolver`.
-
-Then open **http://hoster.local**
+Two things `.localhost` cannot do: resolve from *other devices* on your network,
+and start Hoster automatically when you log in. `setup.sh` covers both — it
+points `*.hoster.local` at your machine via dnsmasq and installs a launchd agent.
+Afterwards, run with `HOSTER_DOMAIN=hoster.local`.
 
 ## Usage
 
@@ -85,7 +95,8 @@ This is the part worth being precise about, because one of these is impossible.
 
 | Where the visitor is | Internet needed | How they get in |
 |---|---|---|
-| Same Wi-Fi as your machine | **No** | `https://myapp.hoster.local` |
+| This machine | **No** | `http://myapp.hoster.localhost` — works out of the box |
+| Same Wi-Fi, other device | **No** | Needs `setup.sh`, then `https://myapp.hoster.local` |
 | Anywhere else | Yes | `hoster share myapp` |
 | Anywhere else, no internet | — | **Not possible.** No network path exists. |
 
@@ -93,9 +104,10 @@ Offline hosting and worldwide access are different modes, not one feature. On
 your LAN, Hoster is genuinely internet-free. Off it, packets need a network, and
 the tunnel is what provides one.
 
-For other devices on your Wi-Fi to resolve `*.hoster.local`, point their DNS at
-your machine's LAN IP, or set your router's DNS to it. If that is more trouble
-than it's worth, `hoster share` works on the LAN too.
+On this machine nothing needs configuring: browsers resolve any `.localhost`
+name to 127.0.0.1 themselves. For *other* devices on your Wi-Fi, run `setup.sh`
+and point their DNS at your machine's LAN IP, or set your router's DNS to it. If
+that is more trouble than it's worth, `hoster share` works on the LAN too.
 
 ## Using the database
 
@@ -163,6 +175,7 @@ Read [SECURITY.md](SECURITY.md) before hosting anything that matters.
 - The control plane has no authentication. Keep port 7010 on localhost.
 - `hoster rm` drops the app's database with no undo.
 - Apps are capped at 1 GB memory and 1.5 CPUs each.
+- `.localhost` names resolve only on this machine; LAN access needs `setup.sh`.
 - macOS only for now.
 
 ## Contributing
