@@ -7,7 +7,7 @@ Contributions are welcome.
 Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, then:
 
 ```bash
-git clone <this-repository-url>
+git clone https://github.com/aidnhealth/Hoster.git
 cd Hoster
 npm install
 npm run dev          # control plane with reload on change
