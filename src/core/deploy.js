@@ -6,6 +6,7 @@ import { detect } from '../builders/detect.js';
 import { ensureNetwork, removeContainer } from './docker.js';
 import { provisionDatabase } from './postgres.js';
 import { ensureCaddy, reload } from '../routing/caddy.js';
+import { serveStatic, stopStatic } from '../routing/lan.js';
 import {
   createApp, getApp, updateApp, startDeploy, appendLog, finishDeploy,
 } from '../db/apps.js';
@@ -43,6 +44,8 @@ export async function deploy({ slug, sourcePath, withDatabase = true, onLog = ()
 
     if (plan.kind === 'static') {
       await buildStatic({ app, source, plan, log });
+      await serveStatic({ ...app, kind: 'static' });
+      log(`serving on port ${app.port} for other devices on the network`);
     } else {
       await buildAndRunContainer({ app, source, plan, dbInfo, log });
     }
@@ -127,6 +130,10 @@ async function buildAndRunContainer({ app, source, plan, dbInfo, log }) {
     // Caps so one runaway app can't take the whole machine down.
     '--memory', '1g',
     '--cpus', '1.5',
+    // Published on 0.0.0.0 so phones and laptops on the same network can reach
+    // the app by IP. Hostnames cannot do this job: *.localhost is loopback on
+    // whichever device resolves it.
+    '-p', `0.0.0.0:${app.port}:${app.port}`,
     ...envArgs,
     image,
   ]);
@@ -136,6 +143,7 @@ export async function stopApp(slug) {
   const app = getApp(slug);
   if (!app) throw new Error(`no such app: ${slug}`);
   if (app.kind === 'container') await run('docker', ['stop', slug]);
+  else stopStatic(slug);
   updateApp(slug, { status: 'stopped' });
   await reload();
 }
@@ -144,6 +152,7 @@ export async function startApp(slug) {
   const app = getApp(slug);
   if (!app) throw new Error(`no such app: ${slug}`);
   if (app.kind === 'container') await runOrThrow('docker', ['start', slug]);
+  else await serveStatic(app);
   updateApp(slug, { status: 'live' });
   await reload();
 }

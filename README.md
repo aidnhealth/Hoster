@@ -95,8 +95,8 @@ This is the part worth being precise about, because one of these is impossible.
 
 | Where the visitor is | Internet needed | How they get in |
 |---|---|---|
-| This machine | **No** | `http://myapp.hoster.localhost` — works out of the box |
-| Same Wi-Fi, other device | **No** | Needs `setup.sh`, then `https://myapp.hoster.local` |
+| This machine | **No** | `http://myapp.hoster.localhost` |
+| Phone or laptop on the same Wi-Fi | **No** | `http://<your-lan-ip>:<port>` — shown on the app's card |
 | Anywhere else | Yes | `hoster share myapp` |
 | Anywhere else, no internet | — | **Not possible.** No network path exists. |
 
@@ -104,10 +104,19 @@ Offline hosting and worldwide access are different modes, not one feature. On
 your LAN, Hoster is genuinely internet-free. Off it, packets need a network, and
 the tunnel is what provides one.
 
-On this machine nothing needs configuring: browsers resolve any `.localhost`
-name to 127.0.0.1 themselves. For *other* devices on your Wi-Fi, run `setup.sh`
-and point their DNS at your machine's LAN IP, or set your router's DNS to it. If
-that is more trouble than it's worth, `hoster share` works on the LAN too.
+**Hostnames do not travel.** `*.hoster.localhost` resolves to 127.0.0.1 on
+whichever device asks — on your phone it means *the phone*. So every app is also
+published on its own port across the network, and the dashboard shows that
+address on each app's card:
+
+```
+this mac       http://myapp.hoster.localhost
+your network   http://192.168.1.7:7100     <- open this on your phone
+```
+
+That works on any device on the same Wi-Fi with no internet, no DNS setup and
+nothing installed. If you would rather have names than ports on the LAN, run
+`setup.sh` and point the other devices' DNS at your machine.
 
 ## Using the database
 
@@ -175,7 +184,10 @@ Read [SECURITY.md](SECURITY.md) before hosting anything that matters.
 - The control plane has no authentication. Keep port 7010 on localhost.
 - `hoster rm` drops the app's database with no undo.
 - Apps are capped at 1 GB memory and 1.5 CPUs each.
-- `.localhost` names resolve only on this machine; LAN access needs `setup.sh`.
+- `.localhost` names work only on this machine; other devices use the port URL.
+- Opening a public tunnel takes up to a minute while its DNS propagates. Hoster
+  waits for the link to actually work before handing it to you, rather than
+  returning a URL that answers Cloudflare 1033 for the first half minute.
 - macOS only for now.
 
 ## Contributing

@@ -3,13 +3,22 @@ import { createServer } from './api/server.js';
 import { CONTROL_PORT, HOME, APPS_DIR, LOGS_DIR, ROOT_DOMAIN } from './core/config.js';
 import { ensureNetwork } from './core/docker.js';
 import { ensureCaddy } from './routing/caddy.js';
+import { clearStaleTunnels } from './routing/tunnel.js';
+import { restoreStatic, lanAddress } from './routing/lan.js';
 
 for (const dir of [HOME, APPS_DIR, LOGS_DIR]) fs.mkdirSync(dir, { recursive: true });
+
+const stale = clearStaleTunnels();
+if (stale) console.log(`cleared ${stale} stale tunnel(s) from the last run`);
 
 await ensureNetwork();
 await ensureCaddy().catch((e) => console.error('caddy not started:', e.message));
 
-createServer().listen(CONTROL_PORT, () => {
+const restored = await restoreStatic();
+if (restored) console.log(`restored ${restored} static app(s)`);
+
+createServer().listen(CONTROL_PORT, '0.0.0.0', () => {
   console.log(`hoster control plane -> http://localhost:${CONTROL_PORT}`);
-  console.log(`dashboard            -> https://${ROOT_DOMAIN}`);
+  const ip = lanAddress();
+  if (ip) console.log(`on your network       -> http://${ip}:<app port>`);
 });

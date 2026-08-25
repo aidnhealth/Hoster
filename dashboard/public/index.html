@@ -32,14 +32,50 @@
   .failed{background:var(--err)} .created{background:var(--warn)}
   a { color:var(--accent); text-decoration:none; font-size:13px }
   a:hover { text-decoration:underline }
-  .meta { color:var(--muted); font-size:12px; margin:6px 0 12px;
-          font-family:ui-monospace,monospace; word-break:break-all }
+  .meta { color:var(--muted); font-size:12px; margin:4px 0;
+          font-family:ui-monospace,monospace; word-break:break-all;
+          display:flex; gap:8px; align-items:baseline; flex-wrap:wrap }
+  .meta:last-of-type { margin-bottom:12px }
+  .lbl { flex:0 0 82px; color:var(--muted); opacity:.7; font-size:10px;
+         letter-spacing:.08em; text-transform:uppercase }
+  .lbl.pub { color:var(--warn); opacity:1 }
+  .hint { color:var(--muted); opacity:.6; font-size:11px }
   .actions { display:flex; gap:8px; flex-wrap:wrap }
   pre { background:#0b0d11; border:1px solid var(--line); border-radius:8px;
         padding:12px; overflow:auto; max-height:320px; font-size:12px;
         white-space:pre-wrap; margin-top:12px }
   .empty { color:var(--muted); padding:32px; text-align:center;
            border:1px dashed var(--line); border-radius:12px }
+
+  /* --- share result modal --- */
+  dialog {
+    border:1px solid var(--line); background:var(--panel); color:var(--fg);
+    border-radius:14px; padding:0; max-width:520px; width:calc(100% - 32px);
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  dialog::backdrop { background:rgba(3,5,8,.66) }
+  .m-head { padding:20px 22px 0; display:flex; align-items:center; gap:10px }
+  .m-head .dot { width:9px; height:9px }
+  .m-head h3 { margin:0; font-size:17px }
+  .m-body { padding:12px 22px 0 }
+  .m-body p { margin:0 0 14px; color:var(--muted); font-size:14px }
+  .urlbox {
+    display:flex; gap:8px; align-items:center;
+    background:#0b0d11; border:1px solid var(--line); border-radius:8px;
+    padding:10px 12px;
+  }
+  .urlbox a {
+    flex:1; font-family:ui-monospace,monospace; font-size:13px;
+    word-break:break-all; line-height:1.4;
+  }
+  .m-foot {
+    display:flex; gap:8px; justify-content:flex-end;
+    padding:18px 22px 20px;
+  }
+  .warn {
+    margin-top:14px; font-size:12.5px; color:var(--warn);
+    border-left:2px solid var(--warn); padding-left:10px; line-height:1.5;
+  }
 </style>
 
 <header>
@@ -56,6 +92,30 @@
   <div id="apps"></div>
 </main>
 
+<dialog id="shareModal" aria-labelledby="shareTitle">
+  <div class="m-head">
+    <span class="dot live" aria-hidden="true"></span>
+    <h3 id="shareTitle">Your app is public</h3>
+  </div>
+  <div class="m-body">
+    <p>Anyone with this link can open your app from anywhere in the world.</p>
+    <div class="urlbox">
+      <a id="shareUrl" href="#" target="_blank" rel="noopener"></a>
+      <button id="copyBtn" class="ghost">Copy</button>
+    </div>
+    <p class="warn">There is no password on this link &mdash; anyone who has it can open
+      your app. Close the tunnel with Unshare when you are done. The URL changes
+      each time you share.</p>
+    <p style="font-size:12.5px;margin-top:12px">To reach this app from a phone on your
+      own Wi-Fi <em>without</em> internet, use the <strong>your network</strong> address on
+      the app's card instead.</p>
+  </div>
+  <div class="m-foot">
+    <button id="openBtn" class="ghost">Open</button>
+    <button id="closeBtn">Close</button>
+  </div>
+</dialog>
+
 <script>
 const $ = (s) => document.querySelector(s);
 const api = (r, o) => fetch(r, {
@@ -66,7 +126,11 @@ const api = (r, o) => fetch(r, {
   return b;
 });
 
-api('/api/info').then((i) => { $('#domain').textContent = '*.' + i.domain; });
+api('/api/info').then((i) => {
+  $('#domain').textContent = i.lan
+    ? `*.${i.domain}  ·  on this network: ${i.lan}`
+    : `*.${i.domain}`;
+});
 
 function render(apps) {
   const el = $('#apps');
@@ -79,10 +143,19 @@ function render(apps) {
       <h2><span class="dot ${a.status}"></span>${a.slug}
         <span class="sub" style="font-weight:400">${a.kind || ''}</span></h2>
       <div class="meta">
+        <span class="lbl">this mac</span>
         <a href="${a.local_url}" target="_blank">${a.local_url}</a>
-        ${a.tunnel_url ? ` · <a href="${a.tunnel_url}" target="_blank">${a.tunnel_url}</a>` : ''}
-        ${a.db_name ? ` · db: ${a.db_name}` : ''}
       </div>
+      ${a.lan_url ? `<div class="meta">
+        <span class="lbl">your network</span>
+        <a href="${a.lan_url}" target="_blank">${a.lan_url}</a>
+        <span class="hint">works on any device on this Wi-Fi, no internet needed</span>
+      </div>` : ''}
+      ${a.tunnel_url ? `<div class="meta">
+        <span class="lbl pub">internet</span>
+        <a href="${a.tunnel_url}" target="_blank">${a.tunnel_url}</a>
+      </div>` : ''}
+      ${a.db_name ? `<div class="meta"><span class="lbl">database</span>${a.db_name}</div>` : ''}
       <div class="actions">
         <button class="ghost" data-act="redeploy" data-slug="${a.slug}">Redeploy</button>
         <button class="ghost" data-act="${a.status === 'live' ? 'stop' : 'start'}" data-slug="${a.slug}">
@@ -158,15 +231,60 @@ $('#apps').addEventListener('click', async (e) => {
       rm:       ['DELETE', `/api/apps/${slug}`],
     };
     const [method, route, body] = routes[act];
-    await api(route, { method, body });
+
+    // Opening a tunnel takes many seconds, so say so instead of going silent.
+    const label = btn.textContent;
+    // The wait is real: a fresh quick tunnel needs its DNS to propagate before
+    // the link works, so we hold the button rather than hand over a dead URL.
+    if (act === 'share') btn.textContent = 'Opening tunnel (up to a minute)...';
+    if (act === 'redeploy') btn.textContent = 'Building...';
+
+    try {
+      const out = await api(route, { method, body });
+      if (act === 'share' && out.url) showShare(out.url);
+    } finally {
+      btn.textContent = label;
+    }
   } catch (err) { alert(err.message); }
   refresh();
 });
+
+const modal = $('#shareModal');
+
+function showShare(url) {
+  $('#shareUrl').textContent = url;
+  $('#shareUrl').href = url;
+  $('#copyBtn').textContent = 'Copy';
+  modal.showModal();
+  $('#closeBtn').focus();
+}
+
+$('#closeBtn').addEventListener('click', () => modal.close());
+$('#openBtn').addEventListener('click', () => window.open($('#shareUrl').href, '_blank'));
+
+$('#copyBtn').addEventListener('click', async () => {
+  const url = $('#shareUrl').textContent;
+  try {
+    await navigator.clipboard.writeText(url);
+    $('#copyBtn').textContent = 'Copied';
+  } catch {
+    // Clipboard access can be refused; select the text so Cmd-C still works.
+    const r = document.createRange();
+    r.selectNodeContents($('#shareUrl'));
+    getSelection().removeAllRanges();
+    getSelection().addRange(r);
+    $('#copyBtn').textContent = 'Press Cmd-C';
+  }
+});
+
+// Clicking the backdrop closes, matching what the dimming implies.
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
 
 refresh();
 setInterval(() => {
   // Never re-render underneath someone mid-deploy or typing in the form.
   if (document.activeElement?.tagName === 'INPUT') return;
+  if (modal.open) return;
   refresh();
 }, 5000);
 </script>

@@ -7,6 +7,7 @@ import { deploy, stopApp, startApp } from '../core/deploy.js';
 import { logs, removeContainer } from '../core/docker.js';
 import { dropDatabase } from '../core/postgres.js';
 import { openTunnel, closeTunnel, localUrl } from '../routing/tunnel.js';
+import { lanUrl, lanAddress, stopStatic } from '../routing/lan.js';
 import { reload } from '../routing/caddy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,7 @@ export function createServer() {
     res.json(listApps().map((a) => ({
       ...a,
       local_url: localUrl(a.slug),
+      lan_url: lanUrl(a),
       last_deploy: latestDeploy(a.id),
     })));
   }));
@@ -72,6 +74,7 @@ export function createServer() {
     const a = getApp(req.params.slug);
     if (!a) return res.status(404).json({ error: 'not found' });
     closeTunnel(a.slug);
+    stopStatic(a.slug);
     await removeContainer(a.slug);
     await dropDatabase(a.db_name, a.slug);
     deleteApp(a.slug);
@@ -80,7 +83,7 @@ export function createServer() {
   }));
 
   app.get('/api/info', (_req, res) =>
-    res.json({ domain: ROOT_DOMAIN, port: CONTROL_PORT }));
+    res.json({ domain: ROOT_DOMAIN, port: CONTROL_PORT, lan: lanAddress() }));
 
   return app;
 }
