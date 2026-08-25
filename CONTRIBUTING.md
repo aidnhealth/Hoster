@@ -2,10 +2,12 @@
 
 Contributions are welcome.
 
-## Getting set up
+## Development setup
+
+Follow [docs/SETUP.md](docs/SETUP.md) for prerequisites, then:
 
 ```bash
-git clone <your-fork>
+git clone <this-repository-url>
 cd Hoster
 npm install
 npm run dev          # control plane with reload on change
@@ -17,11 +19,11 @@ You need Docker running, plus `nixpacks` and `cloudflared`:
 brew install nixpacks cloudflared
 ```
 
-`sudo ./setup.sh` is only needed if you want `*.hoster.local` to resolve in a
-browser. Without it you can still test with an explicit Host header:
+`sudo ./setup.sh` is only needed for `*.hoster.local` DNS and start-on-login.
+Without it you can still smoke-test routing with:
 
 ```bash
-curl -H "Host: myapp.hoster.local" http://localhost/
+curl -H "Host: myapp.hoster.localhost" http://127.0.0.1/
 ```
 
 ## Layout
@@ -29,25 +31,24 @@ curl -H "Host: myapp.hoster.local" http://localhost/
 | Path | What lives there |
 |---|---|
 | `src/core/` | Deploy engine, Docker, Postgres, secrets, config |
-| `src/builders/` | Stack detection |
-| `src/routing/` | Caddy config generation, Cloudflare tunnels |
+| `src/builders/` | Stack detection and isolated static builds |
+| `src/routing/` | Caddy, LAN static servers, Cloudflare tunnels |
 | `src/api/` | HTTP control plane |
 | `src/cli/` | `hoster` command |
 | `src/db/` | SQLite schema and queries |
-| `dashboard/public/` | Dashboard, dependency-free |
+| `dashboard/public/` | Dashboard (no bundler) |
+| `docs/` | Setup guide, landing page, assets |
 
 ## Ground rules
 
 - **Never commit a credential.** Secrets are generated at runtime into
-  `~/.hoster/secrets.json`. If you add one, follow that pattern.
-- Keep the dashboard dependency-free — plain HTML, CSS and JS, no build step.
+  `~/.hoster/secrets.json`. Follow that pattern for any new secret.
+- Keep the dashboard dependency-free — plain HTML, CSS, and JS.
 - Comments should explain *why*, not restate the code.
-- Test a change end to end before opening a PR: deploy a container app and a
-  static app, confirm both serve, then open a tunnel.
+- Before opening a PR: deploy a container app and a static app, confirm both
+  serve, then open and close a tunnel.
 
-## Good first issues
+## License
 
-- A `hoster env` command for setting per-app environment variables
-- Named Cloudflare tunnels, so public URLs stay stable
-- Streaming build logs to the dashboard over SSE instead of polling
-- Health checks with automatic rollback on a failed deploy
+By contributing you agree that your contributions are licensed under the MIT
+License (see [LICENSE](LICENSE)).

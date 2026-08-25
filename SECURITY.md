@@ -2,8 +2,9 @@
 
 ## Reporting a vulnerability
 
-Open a [security advisory](../../security/advisories/new) rather than a public
-issue. Please allow a reasonable window for a fix before disclosing.
+If this repository is on GitHub, use **Security → Advisories → Report a
+vulnerability**. Otherwise email the maintainer privately. Please allow a
+reasonable window for a fix before public disclosure.
 
 ## Threat model, stated plainly
 

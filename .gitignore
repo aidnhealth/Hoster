@@ -8,3 +8,8 @@ data/
 secrets.json
 .env
 .env.*
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
