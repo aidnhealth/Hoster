@@ -1,0 +1,10 @@
+node_modules/
+data/
+*.log
+.DS_Store
+
+# Never commit host state or generated credentials.
+.hoster/
+secrets.json
+.env
+.env.*

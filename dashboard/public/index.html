@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hoster</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --line:#252a34; --fg:#e6e9ef;
+    --muted:#8b94a7; --accent:#5b9dff; --ok:#3fbf7f; --warn:#e0a33e; --err:#e05c5c;
+  }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.5 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+  header { padding:24px 32px; border-bottom:1px solid var(--line);
+           display:flex; align-items:baseline; gap:16px }
+  h1 { margin:0; font-size:20px; letter-spacing:-.02em }
+  .sub { color:var(--muted); font-size:13px }
+  main { padding:24px 32px; max-width:1100px }
+  .row { display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap }
+  input { background:var(--panel); border:1px solid var(--line); color:var(--fg);
+          padding:10px 12px; border-radius:8px; font-size:14px }
+  input[name=path] { flex:1; min-width:280px }
+  button { background:var(--accent); color:#04122e; border:0; padding:10px 16px;
+           border-radius:8px; font-weight:600; cursor:pointer; font-size:14px }
+  button.ghost { background:transparent; color:var(--muted);
+                 border:1px solid var(--line); font-weight:500 }
+  button:disabled { opacity:.5; cursor:default }
+  .app { background:var(--panel); border:1px solid var(--line); border-radius:12px;
+         padding:16px 18px; margin-bottom:12px }
+  .app h2 { margin:0 0 4px; font-size:16px; display:flex; align-items:center; gap:10px }
+  .dot { width:8px; height:8px; border-radius:50% }
+  .live{background:var(--ok)} .stopped{background:var(--muted)}
+  .failed{background:var(--err)} .created{background:var(--warn)}
+  a { color:var(--accent); text-decoration:none; font-size:13px }
+  a:hover { text-decoration:underline }
+  .meta { color:var(--muted); font-size:12px; margin:6px 0 12px;
+          font-family:ui-monospace,monospace; word-break:break-all }
+  .actions { display:flex; gap:8px; flex-wrap:wrap }
+  pre { background:#0b0d11; border:1px solid var(--line); border-radius:8px;
+        padding:12px; overflow:auto; max-height:320px; font-size:12px;
+        white-space:pre-wrap; margin-top:12px }
+  .empty { color:var(--muted); padding:32px; text-align:center;
+           border:1px dashed var(--line); border-radius:12px }
+</style>
+
+<header>
+  <h1>Hoster</h1>
+  <span class="sub" id="domain"></span>
+</header>
+
+<main>
+  <form class="row" id="deployForm">
+    <input name="path" placeholder="/absolute/path/to/your/app" required>
+    <input name="slug" placeholder="name (optional)" size="16">
+    <button id="deployBtn">Deploy</button>
+  </form>
+  <div id="apps"></div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const api = (r, o) => fetch(r, {
+  headers: { 'content-type': 'application/json' }, ...o,
+}).then(async (res) => {
+  const b = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(b.error || res.statusText);
+  return b;
+});
+
+api('/api/info').then((i) => { $('#domain').textContent = '*.' + i.domain; });
+
+function render(apps) {
+  const el = $('#apps');
+  if (!apps.length) {
+    el.innerHTML = '<div class="empty">No apps yet. Point the box above at a project folder.</div>';
+    return;
+  }
+  el.innerHTML = apps.map((a) => `
+    <div class="app">
+      <h2><span class="dot ${a.status}"></span>${a.slug}
+        <span class="sub" style="font-weight:400">${a.kind || ''}</span></h2>
+      <div class="meta">
+        <a href="${a.local_url}" target="_blank">${a.local_url}</a>
+        ${a.tunnel_url ? ` · <a href="${a.tunnel_url}" target="_blank">${a.tunnel_url}</a>` : ''}
+        ${a.db_name ? ` · db: ${a.db_name}` : ''}
+      </div>
+      <div class="actions">
+        <button class="ghost" data-act="redeploy" data-slug="${a.slug}">Redeploy</button>
+        <button class="ghost" data-act="${a.status === 'live' ? 'stop' : 'start'}" data-slug="${a.slug}">
+          ${a.status === 'live' ? 'Stop' : 'Start'}</button>
+        <button class="ghost" data-act="${a.tunnel_url ? 'unshare' : 'share'}" data-slug="${a.slug}">
+          ${a.tunnel_url ? 'Unshare' : 'Share publicly'}</button>
+        <button class="ghost" data-act="logs" data-slug="${a.slug}">Logs</button>
+        <button class="ghost" data-act="rm" data-slug="${a.slug}">Delete</button>
+      </div>
+      <pre id="log-${a.slug}" hidden></pre>
+    </div>`).join('');
+}
+
+// Slugs whose log pane is open, so the poll below can restore them after a
+// re-render instead of collapsing whatever the user just opened.
+const openLogs = new Set();
+
+async function showLogs(slug) {
+  const pre = $(`#log-${CSS.escape(slug)}`);
+  if (!pre) return;
+  pre.hidden = false;
+  pre.textContent = (await api(`/api/apps/${slug}/logs`)).logs || '(no output)';
+}
+
+const refresh = () => api('/api/apps')
+  .then((apps) => { render(apps); openLogs.forEach(showLogs); })
+  .catch(console.error);
+
+$('#deployForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const slug = f.slug.value.trim() || f.path.value.split('/').filter(Boolean).pop();
+  $('#deployBtn').disabled = true;
+  $('#deployBtn').textContent = 'Building...';
+  try {
+    await api(`/api/apps/${slug}/deploy`, {
+      method: 'POST', body: JSON.stringify({ sourcePath: f.path.value.trim() }),
+    });
+    f.reset();
+  } catch (err) { alert(err.message); }
+  $('#deployBtn').disabled = false;
+  $('#deployBtn').textContent = 'Deploy';
+  refresh();
+});
+
+$('#apps').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const { act, slug } = btn.dataset;
+  btn.disabled = true;
+  try {
+    if (act === 'logs') {
+      if (openLogs.has(slug)) {
+        openLogs.delete(slug);
+        $(`#log-${CSS.escape(slug)}`).hidden = true;
+      } else {
+        openLogs.add(slug);
+        await showLogs(slug);
+      }
+      btn.disabled = false;
+      return;
+    }
+    if (act === 'rm') openLogs.delete(slug);
+    if (act === 'rm' && !confirm(`Delete ${slug}, its container and its database?`)) {
+      btn.disabled = false; return;
+    }
+    const routes = {
+      redeploy: ['POST', `/api/apps/${slug}/deploy`, '{}'],
+      stop:     ['POST', `/api/apps/${slug}/stop`],
+      start:    ['POST', `/api/apps/${slug}/start`],
+      share:    ['POST', `/api/apps/${slug}/public`, JSON.stringify({ enabled: true })],
+      unshare:  ['POST', `/api/apps/${slug}/public`, JSON.stringify({ enabled: false })],
+      rm:       ['DELETE', `/api/apps/${slug}`],
+    };
+    const [method, route, body] = routes[act];
+    await api(route, { method, body });
+  } catch (err) { alert(err.message); }
+  refresh();
+});
+
+refresh();
+setInterval(() => {
+  // Never re-render underneath someone mid-deploy or typing in the form.
+  if (document.activeElement?.tagName === 'INPUT') return;
+  refresh();
+}, 5000);
+</script>

@@ -1,0 +1,174 @@
+# Hoster
+
+**Your own machine as a hosting platform.** Point it at a project folder — it
+detects the stack, builds it, runs it, gives it a Postgres database, and puts it
+behind a URL. Front-end and back-end both.
+
+Works on your local network with **no internet at all**. When you want to show
+someone outside, one command gives you a public link.
+
+No API keys. No accounts. No cloud bill.
+
+```bash
+hoster deploy ./my-app
+#   https://my-app.hoster.local
+
+hoster share my-app
+#   https://indirect-trying-randy.trycloudflare.com   <- send this to anyone
+```
+
+---
+
+## Why
+
+Self-hosting a side project usually means renting a VPS, wiring up nginx,
+managing certificates and paying monthly for something that gets ten visitors.
+Hoster puts that on hardware you already own. Deploys are one command, apps come
+back after a reboot, and nothing leaves your machine unless you ask it to.
+
+## What it does
+
+- **Detects the stack automatically** — a Dockerfile if the repo has one,
+  otherwise [Nixpacks](https://nixpacks.com) (Node, Python, Go, Ruby, Rust, PHP,
+  Java), otherwise plain static files.
+- **React, Vue, Svelte and Angular** build to static assets served directly, with
+  client-side routing fallback so deep links work.
+- **A Postgres database per app**, created on first deploy and injected as
+  `DATABASE_URL`. Your app just reads it.
+- **Automatic HTTPS** on your LAN via Caddy's internal CA.
+- **A public link on demand** through a Cloudflare quick tunnel. No port
+  forwarding, no router config, no domain, no Cloudflare account.
+- **Survives reboots** — apps restart when you log back in.
+- **Web dashboard and a CLI**, whichever you prefer.
+
+## Requirements
+
+| Needed | Notes |
+|---|---|
+| macOS | Linux support is a welcome PR |
+| Docker | Must be running |
+| Node.js 20+ | Runs the control plane |
+| `nixpacks`, `cloudflared` | `brew install nixpacks cloudflared` |
+| **API keys** | **None. Nothing to sign up for.** |
+
+## Install
+
+```bash
+git clone https://github.com/<you>/hoster.git
+cd hoster
+npm install
+sudo ./setup.sh
+```
+
+`setup.sh` points `*.hoster.local` at your machine via dnsmasq and installs a
+launchd agent so everything starts on login. It needs `sudo` for `/etc/resolver`.
+
+Then open **http://hoster.local**
+
+## Usage
+
+```bash
+hoster deploy ./my-app [--name slug]   # build and publish
+hoster ls                              # list apps and their URLs
+hoster logs <slug>                     # app logs
+hoster share <slug>                    # public internet URL
+hoster unshare <slug>                  # close it again
+hoster stop|start <slug>               # stop or start an app
+hoster rm <slug>                       # remove app, container and database
+```
+
+The dashboard does all of the same things with buttons.
+
+## Reaching your apps from elsewhere
+
+This is the part worth being precise about, because one of these is impossible.
+
+| Where the visitor is | Internet needed | How they get in |
+|---|---|---|
+| Same Wi-Fi as your machine | **No** | `https://myapp.hoster.local` |
+| Anywhere else | Yes | `hoster share myapp` |
+| Anywhere else, no internet | — | **Not possible.** No network path exists. |
+
+Offline hosting and worldwide access are different modes, not one feature. On
+your LAN, Hoster is genuinely internet-free. Off it, packets need a network, and
+the tunnel is what provides one.
+
+For other devices on your Wi-Fi to resolve `*.hoster.local`, point their DNS at
+your machine's LAN IP, or set your router's DNS to it. If that is more trouble
+than it's worth, `hoster share` works on the LAN too.
+
+## Using the database
+
+Every container app gets `DATABASE_URL` in its environment. Nothing to configure:
+
+```js
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+```
+
+To connect yourself:
+
+```bash
+psql "$(node -e "
+  const {getApp}=require('./src/db/apps.js');
+  console.log(getApp('my-app').db_url)
+")"
+```
+
+## How it works
+
+```
+        CLI  ────┐            ┌──── dashboard
+                 ▼            ▼
+          control plane (Node + SQLite)
+              app state, deploy history
+                       │
+      ┌────────────────┼────────────────┐
+      ▼                ▼                ▼
+   builder          Docker            Caddy
+ Dockerfile      one container     routes *.hoster.local
+   → nixpacks      per app,        terminates TLS
+   → static      1 GB / 1.5 CPU
+                       │
+                  Postgres
+             one database + role per app
+                       │
+      ┌────────────────┴────────────────┐
+      ▼                                 ▼
+  dnsmasq                       Cloudflare Tunnel
+  LAN, no internet               public link
+```
+
+A deploy: detect the stack → build an image (or compile static assets) →
+provision the database → start the container → regenerate the Caddyfile → reload
+Caddy. Routing config is rebuilt wholesale from the database each time, so it
+cannot drift from reality.
+
+## Security
+
+Hoster is built for a trusted operator hosting their own projects. Deploying an
+app runs its build scripts on your machine, and `hoster share` exposes an app
+publicly with no authentication.
+
+All database passwords are generated randomly on first run and stored in
+`~/.hoster/secrets.json` with mode `0600`, never in the repo. Postgres binds to
+`127.0.0.1` only.
+
+Read [SECURITY.md](SECURITY.md) before hosting anything that matters.
+
+## Limits worth knowing
+
+- Tunnel URLs change on every restart. Stable custom domains need a named
+  Cloudflare tunnel and a domain you own.
+- The control plane has no authentication. Keep port 7010 on localhost.
+- `hoster rm` drops the app's database with no undo.
+- Apps are capped at 1 GB memory and 1.5 CPUs each.
+- macOS only for now.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
