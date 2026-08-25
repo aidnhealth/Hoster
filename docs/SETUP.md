@@ -32,7 +32,7 @@ No cloud accounts and no API keys are required.
 ## 2. Install Hoster
 
 ```bash
-git clone <this-repository-url>
+git clone https://github.com/aidnhealth/Hoster.git
 cd Hoster
 npm install
 npm link          # exposes the `hoster` CLI globally
