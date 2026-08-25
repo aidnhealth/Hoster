@@ -35,7 +35,13 @@ export function detect(dir) {
         return { strategy: 'nixpacks', kind: 'container', label: 'Next.js (SSR)' };
       }
       const outDir = frontend === 'vite' ? 'dist' : 'build';
-      return { strategy: 'static-build', kind: 'static', outDir, label: `${frontend} (static)` };
+      // Prefer an explicit production build script when the project has one;
+      // real projects often make plain `build` mean something else.
+      const buildScript = ['build:prod', 'build'].find((n) => n in scripts) ?? 'build';
+      return {
+        strategy: 'static-build', kind: 'static', outDir, buildScript,
+        label: `${frontend} (static, npm run ${buildScript})`,
+      };
     }
     return { strategy: 'nixpacks', kind: 'container', label: 'Node.js' };
   }

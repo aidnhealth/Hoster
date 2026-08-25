@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { CONTROL_PORT, ROOT_DOMAIN } from '../core/config.js';
 import { listApps, getApp, deleteApp, latestDeploy, updateApp } from '../db/apps.js';
@@ -11,6 +13,16 @@ import { lanUrl, lanAddress, stopStatic } from '../routing/lan.js';
 import { reload } from '../routing/caddy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/** Marks folders that Hoster could actually deploy, so they surface first. */
+const PROJECT_MARKERS = [
+  'package.json', 'Dockerfile', 'requirements.txt', 'pyproject.toml',
+  'go.mod', 'Gemfile', 'Cargo.toml', 'composer.json', 'index.html',
+];
+const looksLikeProject = (dir) => {
+  try { return PROJECT_MARKERS.some((f) => fs.existsSync(path.join(dir, f))); }
+  catch { return false; }
+};
 
 export function createServer() {
   const app = express();
@@ -38,6 +50,15 @@ export function createServer() {
     if (!src) return res.status(400).json({ error: 'sourcePath is required' });
     const result = await deploy({ slug: req.params.slug, sourcePath: src });
     res.json({ url: result.url, app: result.app });
+  }));
+
+  app.patch('/api/apps/:slug', wrap((req, res) => {
+    const allowed = ['build_cmd', 'out_dir', 'start_cmd', 'kind_override', 'env_json'];
+    const fields = Object.fromEntries(
+      Object.entries(req.body ?? {}).filter(([k]) => allowed.includes(k)),
+    );
+    if (!Object.keys(fields).length) return res.status(400).json({ error: 'nothing to update' });
+    res.json(updateApp(req.params.slug, fields));
   }));
 
   app.post('/api/apps/:slug/stop', wrap(async (req, res) => {
@@ -80,6 +101,28 @@ export function createServer() {
     deleteApp(a.slug);
     await reload();
     res.json({ ok: true });
+  }));
+
+  // Directory browser for the deploy picker. Read-only, and it only ever lists
+  // directory names — never file contents.
+  app.get('/api/browse', wrap((req, res) => {
+    const dir = req.query.path
+      ? path.resolve(String(req.query.path))
+      : os.homedir();
+
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      return res.status(400).json({ error: `not a directory: ${dir}` });
+    }
+
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => {
+        const full = path.join(dir, e.name);
+        return { name: e.name, path: full, project: looksLikeProject(full) };
+      })
+      .sort((a, b) => Number(b.project) - Number(a.project) || a.name.localeCompare(b.name));
+
+    res.json({ path: dir, parent: path.dirname(dir) === dir ? null : path.dirname(dir), entries });
   }));
 
   app.get('/api/info', (_req, res) =>

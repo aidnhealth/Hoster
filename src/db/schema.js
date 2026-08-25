@@ -35,3 +35,16 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_deploys_app ON deploys(app_id, started_at DESC);
 `);
+
+/**
+ * Added after the first release. Overrides let a project be deployed without
+ * editing it — the settings live here rather than in the user's repository.
+ */
+const columns = db.prepare('PRAGMA table_info(apps)').all().map((c) => c.name);
+const addColumn = (name, decl) => {
+  if (!columns.includes(name)) db.exec(`ALTER TABLE apps ADD COLUMN ${name} ${decl}`);
+};
+addColumn('build_cmd', 'TEXT');     // replaces the detected build command
+addColumn('out_dir', 'TEXT');       // replaces the detected output directory
+addColumn('start_cmd', 'TEXT');     // replaces a container's start command
+addColumn('kind_override', 'TEXT'); // force 'static' or 'container'

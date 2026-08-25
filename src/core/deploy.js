@@ -3,6 +3,7 @@ import path from 'node:path';
 import { run, runOrThrow } from './exec.js';
 import { APPS_DIR, NETWORK, ROOT_DOMAIN } from './config.js';
 import { detect } from '../builders/detect.js';
+import { buildStaticIsolated } from '../builders/staging.js';
 import { ensureNetwork, removeContainer } from './docker.js';
 import { provisionDatabase } from './postgres.js';
 import { ensureCaddy, reload } from '../routing/caddy.js';
@@ -30,7 +31,17 @@ export async function deploy({ slug, sourcePath, withDatabase = true, onLog = ()
     await ensureNetwork();
 
     const plan = detect(source);
+
+    // Anything the user configured for this app wins over detection, so a
+    // project can be deployed as-is even when its own scripts do not fit.
+    if (app.kind_override) plan.kind = app.kind_override;
+    if (app.out_dir) plan.outDir = app.out_dir;
+    if (app.build_cmd) {
+      plan.buildCmd = app.build_cmd;
+      plan.strategy = plan.kind === 'static' ? 'static-build' : plan.strategy;
+    }
     log(`detected: ${plan.label} (${plan.strategy})`);
+    if (app.build_cmd) log(`build command overridden: ${app.build_cmd}`);
 
     let dbInfo = { db_name: app.db_name, db_url: app.db_url };
     if (withDatabase && plan.kind === 'container') {
@@ -74,30 +85,34 @@ export async function deploy({ slug, sourcePath, withDatabase = true, onLog = ()
   }
 }
 
-/** Build front-end assets and copy them where Caddy can serve them directly. */
+/**
+ * Publish a front-end build. The compile happens in a container against a
+ * read-only mount, so nothing is ever written inside the user's project.
+ */
 async function buildStatic({ app, source, plan, log }) {
   const target = path.join(APPS_DIR, app.slug);
+  const env = JSON.parse(app.env_json ?? '{}');
 
   if (plan.strategy === 'static-build') {
-    if (fs.existsSync(path.join(source, 'package.json'))) {
-      log('installing dependencies...');
-      const install = fs.existsSync(path.join(source, 'package-lock.json')) ? 'ci' : 'install';
-      await runOrThrow('npm', [install, '--no-audit', '--no-fund'],
-        { cwd: source, onData: log });
-      log('running build...');
-      await runOrThrow('npm', ['run', 'build'], { cwd: source, onData: log });
-    }
+    await buildStaticIsolated({
+      source,
+      outDir: target,
+      buildScript: plan.buildScript ?? 'build',
+      buildCmd: plan.buildCmd,
+      outSubdir: plan.outDir ?? 'dist',
+      env,
+      log,
+    });
+    return;
   }
 
+  // A plain folder of HTML: copy it as-is, still without touching the original.
   const outDir = path.join(source, plan.outDir ?? '.');
-  if (!fs.existsSync(outDir)) {
-    throw new Error(`build finished but ${plan.outDir} does not exist`);
-  }
-
+  if (!fs.existsSync(outDir)) throw new Error(`${plan.outDir} does not exist`);
   fs.rmSync(target, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.cpSync(outDir, target, { recursive: true });
-  log(`published static assets -> ${target}`);
+  log(`published static files -> ${target}`);
 }
 
 async function buildAndRunContainer({ app, source, plan, dbInfo, log }) {
@@ -134,8 +149,14 @@ async function buildAndRunContainer({ app, source, plan, dbInfo, log }) {
     // the app by IP. Hostnames cannot do this job: *.localhost is loopback on
     // whichever device resolves it.
     '-p', `0.0.0.0:${app.port}:${app.port}`,
+    // Lets a container reach services running on the host — a database or
+    // broker the project already uses — at host.docker.internal.
+    '--add-host', 'host.docker.internal:host-gateway',
     ...envArgs,
     image,
+    // An override replaces the image's own CMD, so a project can be started
+    // differently without editing its Dockerfile.
+    ...(app.start_cmd ? app.start_cmd.split(' ').filter(Boolean) : []),
   ]);
 }
 
