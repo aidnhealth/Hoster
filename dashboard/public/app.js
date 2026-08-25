@@ -70,6 +70,9 @@ function cardHtml(a) {
       <span class="name-h">${esc(a.slug)}</span>
       ${a.kind ? `<span class="kind">${esc(a.kind)}</span>` : ''}
       <span class="status-txt">${esc(a.status)}</span>
+      ${a.status === 'crashed'
+        ? '<span class="status-txt" style="color:var(--err)">container keeps restarting — open Logs</span>'
+        : ''}
     </div>
     <div class="routes">
       ${routeRow('this mac', a.local_url)}
@@ -160,7 +163,7 @@ $('#apps').addEventListener('click', async (e) => {
   const label = btn.textContent.trim();
   const progress = {
     redeploy: 'Building…',
-    share: 'Opening tunnel (up to a minute)…',
+    share: 'Checking app, then opening tunnel…',
     stop: 'Stopping…', start: 'Starting…', unshare: 'Closing…', rm: 'Deleting…',
   }[act];
   if (progress) btn.textContent = progress;

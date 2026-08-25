@@ -182,6 +182,8 @@ Read [SECURITY.md](SECURITY.md) before hosting anything that matters.
 - Tunnel URLs change on every restart. Stable custom domains need a named
   Cloudflare tunnel and a domain you own.
 - The control plane has no authentication. Keep port 7010 on localhost.
+- Sharing refuses to publish an app that is not answering locally, so a public
+  link never hands someone a Cloudflare 502.
 - `hoster rm` drops the app's database with no undo.
 - Apps are capped at 1 GB memory and 1.5 CPUs each.
 - `.localhost` names work only on this machine; other devices use the port URL.

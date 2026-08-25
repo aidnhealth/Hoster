@@ -4,6 +4,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { ROOT_DOMAIN, LOGS_DIR } from '../core/config.js';
 import { updateApp, listApps } from '../db/apps.js';
+import { probe } from '../core/health.js';
+import { run } from '../core/exec.js';
 
 const tunnels = new Map(); // slug -> { proc, url, log }
 
@@ -26,13 +28,23 @@ function tailLog(slug, lines = 6) {
  * Always tunnels to Caddy rather than the app's own port: static apps have no
  * container, and this keeps every app on one identical path.
  */
-export function openTunnel(slug) {
-  if (tunnels.has(slug)) return Promise.resolve(tunnels.get(slug).url);
+export async function openTunnel(slug) {
+  if (tunnels.has(slug)) return tunnels.get(slug).url;
+
+  // Check the app answers locally first. Opening a tunnel to something that is
+  // down produces a public URL that only ever shows a Cloudflare 502.
+  const health = await probe({ slug });
+  if (!health.ok) {
+    throw new Error(
+      `${slug} is not responding locally (${health.reason}) — ` +
+      `fix it before sharing, or the public link will only show an error page`,
+    );
+  }
 
   fs.mkdirSync(LOGS_DIR, { recursive: true });
   const out = fs.createWriteStream(logPath(slug), { flags: 'w' });
 
-  return new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     const proc = spawn('cloudflared', [
       'tunnel', '--no-autoupdate',
       '--url', 'http://localhost:80',
@@ -141,10 +153,14 @@ async function waitForEdge(url, isAlive, budgetMs = 120000) {
         redirect: 'manual',
         signal: AbortSignal.timeout(8000),
       });
-      if (res.status < 400) return;
+      if (res.status < 500) return; // the app answered, even if with a 4xx
       const body = await res.text().catch(() => '');
-      if (!/1033|Argo Tunnel error/i.test(body)) return; // a real app response
-      lastError = `Cloudflare 1033 — edge has no connector yet (HTTP ${res.status})`;
+      // 1033 means the edge has no connector yet. A 502/503 means the tunnel is
+      // fine but the app behind it is not answering — publishing that would
+      // hand out a link that only ever shows an error page.
+      lastError = /1033|Argo Tunnel error/i.test(body)
+        ? `edge has no connector yet (HTTP ${res.status})`
+        : `the app returned HTTP ${res.status} through the tunnel`;
     } catch (err) {
       lastError = `${err.cause?.code ?? err.name}: ${err.cause?.message ?? err.message}`;
     }
@@ -172,7 +188,11 @@ export const localUrl = (slug) => {
  * Called on startup. A tunnel is a child process of the control plane, so any
  * row still marked public points at a URL that died with the last run.
  */
-export function clearStaleTunnels() {
+export async function clearStaleTunnels() {
+  // cloudflared is spawned as a child, but it outlives an abrupt control-plane
+  // exit — leaving public URLs running that nothing tracks any more.
+  await run('pkill', ['-f', 'cloudflared tunnel --no-autoupdate --url']);
+
   const stale = listApps().filter((a) => a.public || a.tunnel_url);
   for (const a of stale) updateApp(a.slug, { public: 0, tunnel_url: null });
   return stale.length;

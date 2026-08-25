@@ -10,6 +10,7 @@ import { logs, removeContainer } from '../core/docker.js';
 import { dropDatabase } from '../core/postgres.js';
 import { openTunnel, closeTunnel, localUrl } from '../routing/tunnel.js';
 import { lanUrl, lanAddress, stopStatic } from '../routing/lan.js';
+import { reconcile, containerState } from '../core/health.js';
 import { reload } from '../routing/caddy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,9 @@ export function createServer() {
       res.status(500).json({ error: err.message }));
   };
 
-  app.get('/api/apps', wrap((_req, res) => {
+  app.get('/api/apps', wrap(async (_req, res) => {
+    // Report what is actually running, not what the last deploy returned.
+    await reconcile();
     res.json(listApps().map((a) => ({
       ...a,
       local_url: localUrl(a.slug),

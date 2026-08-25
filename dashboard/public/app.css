@@ -82,7 +82,8 @@ input.name:focus, .pathfield:focus-within { border-color:var(--accent) }
 }
 .dot { width:8px; height:8px; border-radius:50%; flex:none }
 .dot.live{background:var(--ok); box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
-.dot.stopped{background:var(--dim)} .dot.failed{background:var(--err)}
+.dot.stopped{background:var(--dim)}
+.dot.failed,.dot.crashed{background:var(--err); box-shadow:0 0 0 3px color-mix(in srgb,var(--err) 20%,transparent)}
 .dot.created,.dot.building{background:var(--warn)}
 .status-txt { font-size:12px; color:var(--muted) }
 
