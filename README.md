@@ -49,7 +49,7 @@ brew install node docker nixpacks cloudflared
 # Start Docker Desktop and wait until it is running.
 
 # 2. Install Hoster
-git clone <this-repository-url>
+git clone https://github.com/aidnhealth/Hoster.git
 cd Hoster
 npm install
 npm link          # puts `hoster` on your PATH
